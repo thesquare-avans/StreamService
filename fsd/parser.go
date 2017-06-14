@@ -4,20 +4,22 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"io"
 )
 
+// Parser holds the parser's internal state.
 type Parser struct {
 	rd *bufio.Reader
 }
 
+// NewParser returns a new Parser that reads from input rd.
 func NewParser(rd io.Reader) *Parser {
 	return &Parser{
 		rd: bufio.NewReader(rd),
 	}
 }
 
+// ParseFragment reads a single fragment from the stream and returns it.
 func (p *Parser) ParseFragment() (*Fragment, error) {
 	var fm Fragment
 
@@ -28,7 +30,6 @@ func (p *Parser) ParseFragment() (*Fragment, error) {
 		return nil, err
 	}
 	fm.Length = binary.LittleEndian.Uint32(rawLength[:])
-	fmt.Printf("Raw bytes: %+v, length: %d\n", rawLength[:], fm.Length)
 
 	// Signature
 	_, err = io.ReadFull(p.rd, fm.Signature[:])
@@ -42,8 +43,9 @@ func (p *Parser) ParseFragment() (*Fragment, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// HashedData
 	fm.HashedData = sha256.Sum256(fm.Data)
 
-	fmt.Printf("Length of data: %d\n", len(fm.Data))
 	return &fm, nil
 }
