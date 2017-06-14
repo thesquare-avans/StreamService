@@ -1,9 +1,10 @@
-package fairco
+package fsd
 
 import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -22,24 +23,27 @@ func (p *Parser) ParseFragment() (*Fragment, error) {
 
 	// Length
 	var rawLength [4]byte
-	_, err := p.rd.Read(rawLength[:])
+	_, err := io.ReadFull(p.rd, rawLength[:])
 	if err != nil {
 		return nil, err
 	}
 	fm.Length = binary.LittleEndian.Uint32(rawLength[:])
+	fmt.Printf("Raw bytes: %+v, length: %d\n", rawLength[:], fm.Length)
 
 	// Signature
-	_, err = p.rd.Read(fm.Signature[:])
+	_, err = io.ReadFull(p.rd, fm.Signature[:])
 	if err != nil {
 		return nil, err
 	}
 
 	// Data
-	fm.Data = make([]byte, 0, int(fm.Length))
+	fm.Data = make([]byte, int(fm.Length))
 	_, err = io.ReadFull(p.rd, fm.Data)
 	if err != nil {
 		return nil, err
 	}
 	fm.HashedData = sha256.Sum256(fm.Data)
+
+	fmt.Printf("Length of data: %d\n", len(fm.Data))
 	return &fm, nil
 }
