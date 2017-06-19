@@ -11,6 +11,7 @@ type Fragment struct {
 	Signature  [256]byte
 	Data       []byte
 	HashedData [32]byte
+	Tag        uint
 }
 
 // Verify verifies the fragment using its signature.

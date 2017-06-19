@@ -3,6 +3,7 @@ package playlist
 import (
 	"fmt"
 	"io"
+	"net/url"
 )
 
 const (
@@ -44,4 +45,9 @@ func (w *Writer) WriteChunks(cs []*Chunk) error {
 		}
 	}
 	return nil
+}
+
+func Path(root, streamId string, fragmentTag uint) string {
+	streamId = url.QueryEscape(streamId)
+	return fmt.Sprintf("%s/fragment.ts?stream=%s&fragment=%d", root, streamId, fragmentTag)
 }
