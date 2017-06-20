@@ -37,6 +37,11 @@ func NewMpegTsFile(filename string, output io.Writer) *MpegTs {
 
 func (tc *MpegTs) init(filename string, output io.Writer) {
 	tc.cmd = exec.Command("ffmpeg", "-i", filename, "-map_metadata", "-1", "-c", "copy", "-bsf", "h264_mp4toannexb", "-f", "mpegts", "-")
+	//tc.cmd = exec.Command("ffmpeg", "-i", filename, "-c", "copy", "-f", "mpegts", "-")
+	//tc.cmd = exec.Command("ffmpeg", "-i", filename, "-vcodec", "libx264", "-acodec", "aac", "-profile:v", "baseline", "-f", "mpegts", "-")
+
+	// ffmpeg -i demo.mp4 -codec copy -map 0 -f mpegts -vbsf h264_mp4toannexb -flags -global_header -segment_format mpegts -segment_list_flags +live out.ts
+	//tc.cmd = exec.Command("ffmpeg", "-i", filename, "-codec", "copy", "-map", "0", "-f", "mpegts", "-vbsf", "h264_mp4toannexb", "-flags", "-global_header", "-segment_format", "mpegts", "-segment_list_flags", "-se", "+live", "-")
 	tc.cmd.Stdout = output
 }
 

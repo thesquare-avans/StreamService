@@ -1,27 +1,45 @@
 package main
 
 import (
-	"fmt"
-	"time"
+	"log"
+	"net/http"
 
+	"github.com/thesquare-avans/StreamService/distribution"
+	"github.com/thesquare-avans/StreamService/fsd"
+	"github.com/thesquare-avans/StreamService/hls"
 	"github.com/thesquare-avans/StreamService/stream"
 )
 
 func main() {
-	server, err := stream.NewServer(":1312", "/home/sem/test")
+	ch := make(chan *fsd.Fragment, 16)
+	server, err := stream.NewServer("", 1234, ch)
+	log.Println("Listening")
 	checkErr(err)
-	fmt.Println("Listening and waiting...")
 
-	err = server.WaitForClient()
-	checkErr(err)
-	defer server.Close()
-	fmt.Println("Client connected")
+	go func() {
+		log.Println("Waiting for client")
+		err := server.Run()
+		checkErr(err)
+		err = server.Close()
+		log.Println("Stop listening, return:", err)
+		checkErr(err)
+	}()
+
+	center := distribution.NewCenter()
+	checkErr(center.NewStream("0"))
+
+	go func() {
+		handler := hls.NewHandler(center, "", 5)
+		log.Println("Listening HTTP")
+		checkErr(http.ListenAndServe(":8080", handler))
+	}()
 
 	for {
-		start := time.Now()
-		len, err := server.ReceiveSingle()
+		fragment := <-ch
+		duration, err := fragment.GetVideoLength()
 		checkErr(err)
-		fmt.Printf("Received one fragment, %d bytes, latency: %s\n", len, time.Now().Sub(start))
+		log.Printf("Received fragment, duration: %.3fms, length: %d\n", duration, fragment.Length)
+		center.PushToStream("0", fragment)
 	}
 }
 

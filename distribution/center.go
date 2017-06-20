@@ -17,9 +17,10 @@ var (
 )
 
 type fragmentBuffer struct {
-	lock    sync.RWMutex
-	buffer  *list.List
-	lastTag uint
+	lock     sync.RWMutex
+	buffer   *list.List
+	lastTag  uint
+	mediaSeq int
 }
 
 type Center struct {
@@ -27,7 +28,7 @@ type Center struct {
 	streams map[string]*fragmentBuffer
 }
 
-func NewCenter(fragmentSize int) *Center {
+func NewCenter() *Center {
 	return &Center{
 		streams: make(map[string]*fragmentBuffer),
 	}
@@ -65,6 +66,7 @@ func (c *Center) PushToStream(id string, f *fsd.Fragment) error {
 	defer s.lock.Unlock()
 	if s.buffer.Len()+1 > MaxFragmentsInBuffer {
 		s.buffer.Remove(s.buffer.Front())
+		s.mediaSeq++
 	}
 	// NOTE: this alters the tag of Fragment f.
 	f.Tag = s.lastTag
@@ -93,46 +95,31 @@ func (c *Center) GetFragmentFromStream(id string, tag uint) (*fsd.Fragment, erro
 	return nil, ErrFragmentNotFound
 }
 
-func (c *Center) GetFragmentsFromStream(id string) ([]*fsd.Fragment, error) {
+func (c *Center) GetFragmentsFromStream(id string, max int) ([]*fsd.Fragment, int, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	s, exists := c.streams[id]
 	if !exists {
-		return nil, ErrStreamNotExists
+		return nil, 0, ErrStreamNotExists
 	}
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	bufLen := s.buffer.Len()
+	if max >= 0 && bufLen > max {
+		bufLen = max
+	}
 	buf := make([]*fsd.Fragment, bufLen)
 
+	e := s.buffer.Back()
+	for i := 1; i < bufLen; i++ {
+		e = e.Prev()
+	}
 	var i int
-	for e := s.buffer.Front(); e != nil; e = e.Next() {
+	for ; e != nil; e = e.Next() {
 		frag, _ := e.Value.(*fsd.Fragment)
 		buf[i] = frag
 		i++
 	}
 
-	return buf, nil
-}
-
-func (c *Center) GetTagsFromStream(id string) ([]uint, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	s, exists := c.streams[id]
-	if !exists {
-		return nil, ErrStreamNotExists
-	}
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	bufLen := s.buffer.Len()
-	buf := make([]uint, bufLen)
-
-	var i int
-	for e := s.buffer.Front(); e != nil; e = e.Next() {
-		frag, _ := e.Value.(*fsd.Fragment)
-		buf[i] = frag.Tag
-		i++
-	}
-
-	return buf, nil
+	return buf, s.mediaSeq, nil
 }
