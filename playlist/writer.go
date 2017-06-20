@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	playlistHeader = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-TARGETDURATION:%d\n"
+	playlistHeader = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n\n"
 	playlistChunk  = "#EXTINF:%.3f,\n%s\n"
 )
 
@@ -19,17 +19,19 @@ type Chunk struct {
 type Writer struct {
 	wr        io.Writer
 	targetDur int
+	mediaSeq  int
 }
 
-func NewWriter(wr io.Writer, targetDur int) *Writer {
+func NewWriter(wr io.Writer, targetDur int, mediaSeq int) *Writer {
 	return &Writer{
 		wr:        wr,
 		targetDur: targetDur,
+		mediaSeq:  mediaSeq,
 	}
 }
 
 func (w *Writer) WriteHeader() error {
-	_, err := fmt.Fprintf(w.wr, playlistHeader, w.targetDur)
+	_, err := fmt.Fprintf(w.wr, playlistHeader, w.targetDur, w.mediaSeq)
 	return err
 }
 

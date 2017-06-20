@@ -21,15 +21,20 @@ func NewHandler(center *distribution.Center, root string, targetDuration int) *H
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/stream" {
+	fmt.Println("Path:", r.URL.Path)
+
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+
+	if r.URL.Path == "/live.m3u8" {
 		h.ServePlaylist(w, r)
+		return
 	}
 	h.ServeFragment(w, r)
 }
 
 func (h *Handler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 	streamId := r.URL.Query().Get("stream")
-	chunkTags, err := h.center.GetTagsFromStream(streamId)
+	fragments, mediaSeq, err := h.center.GetFragmentsFromStream(streamId, 5)
 	if err != nil {
 		if err == distribution.ErrStreamNotExists {
 			w.WriteHeader(http.StatusNotFound)
@@ -37,23 +42,27 @@ func (h *Handler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		fmt.Fprintf(w, "error: %s\r\n", err)
+		return
 	}
 
 	var buffer bytes.Buffer
-	pl := playlist.NewWriter(&buffer, h.targetDur)
+	pl := playlist.NewWriter(&buffer, h.targetDur, mediaSeq)
 	err = pl.WriteHeader()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "error: %s\r\n", err)
+		return
 	}
 
-	chunk := playlist.Chunk{Length: float64(h.targetDur)}
-	for _, chunkTag := range chunkTags {
-		chunk.Path = playlist.Path(h.root, streamId, chunkTag)
+	var chunk playlist.Chunk
+	for _, fragment := range fragments {
+		chunk.Path = playlist.Path(h.root, streamId, fragment.Tag)
+		chunk.Length = fragment.VideoLength
 		err = pl.WriteChunk(&chunk)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "error: %s\r\n", err)
+			return
 		}
 	}
 
@@ -69,6 +78,7 @@ func (h *Handler) ServeFragment(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "error: %s\r\n", err)
+		return
 	}
 	fragment, err := h.center.GetFragmentFromStream(streamId, uint(fragmentTag))
 	if err != nil {
@@ -78,6 +88,7 @@ func (h *Handler) ServeFragment(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		fmt.Fprintf(w, "error: %s\r\n", err)
+		return
 	}
 	w.Header().Add("Content-Type", "video/MP2T")
 	w.WriteHeader(http.StatusOK)
