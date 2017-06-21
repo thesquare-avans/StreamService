@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 )
 
 // Payload contains the payload itself and its signature.
@@ -21,13 +21,13 @@ func (p *Payload) Sign(privateKey *rsa.PrivateKey) error {
 	if err != nil {
 		return err
 	}
-	p.Signature = base64.StdEncoding.EncodeToString(signature)
+	p.Signature = hex.EncodeToString(signature)
 	return nil
 }
 
 // Verify verifies the payload using its signature.
 func (p *Payload) Verify(publicKey *rsa.PublicKey) error {
-	signature, err := base64.StdEncoding.DecodeString(p.Signature)
+	signature, err := hex.DecodeString(p.Signature)
 	if err != nil {
 		return err
 	}

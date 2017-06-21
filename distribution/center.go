@@ -3,6 +3,7 @@ package distribution
 import (
 	"container/list"
 	"errors"
+	"log"
 	"sync"
 
 	"github.com/thesquare-avans/StreamService/fsd"
@@ -72,6 +73,7 @@ func (c *Center) PushToStream(id string, f *fsd.Fragment) error {
 	}
 	s.buffer.PushFront(f)
 	s.mediaSeq++
+	log.Println("Pushed frame to", id, "media sequence", s.mediaSeq, "in buffer", s.buffer.Len())
 	return nil
 }
 

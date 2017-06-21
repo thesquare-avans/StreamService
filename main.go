@@ -3,45 +3,63 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/thesquare-avans/StreamService/distribution"
 	"github.com/thesquare-avans/StreamService/fsd"
 	"github.com/thesquare-avans/StreamService/stream"
 )
 
+const (
+	ConcurrentStreams = 4
+	StreamStartPort   = 1234
+	StreamServerPort  = ":8080"
+)
+
 func main() {
-	ch := make(chan *fsd.Fragment, 16)
+	center := distribution.NewCenter()
 
-	server, err := stream.NewServer("", 1234, ch)
-	log.Println("Listening")
-	checkErr(err)
+	for i := 0; i < ConcurrentStreams; i++ {
+		ch := make(chan *fsd.Fragment, 16)
+		port := StreamStartPort + i
 
-	go func() {
-		log.Println("Waiting for client")
-		err := server.Run()
+		log.Printf("Starting StreamServer %d on port %d", i, port)
+		server, err := stream.NewServer("", port, ch)
 		checkErr(err)
-		err = server.Close()
-		log.Println("Stop listening, return:", err)
-		checkErr(err)
-	}()
 
-	streamServer := stream.NewStreamServer()
+		go func() {
+			for {
+				err := server.Run()
+				logErr(err)
+			}
+		}()
 
-	go func() {
-		log.Println("Listening HTTP")
-		checkErr(http.ListenAndServe(":8080", streamServer))
-	}()
+		streamId := strconv.Itoa(i)
+		logErr(center.NewStream(streamId))
 
-	for {
-		fragment := <-ch
-		duration, err := fragment.GetDuration()
-		checkErr(err)
-		log.Printf("Received fragment, duration: %s, length: %d\n", duration, fragment.Length)
-		streamServer.PushFragment(fragment)
+		go func() {
+			for {
+				fragment := <-ch
+				duration, err := fragment.GetDuration()
+				logErr(err)
+				log.Printf("Received fragment, duration: %s, length: %d\n", duration, fragment.Length)
+				logErr(center.PushToStream(streamId, fragment))
+			}
+		}()
 	}
+
+	streamServer := stream.NewStreamServer(center)
+	checkErr(http.ListenAndServe(StreamServerPort, streamServer))
 }
 
 func checkErr(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+func logErr(err error) {
+	if err != nil {
+		log.Println("error:", err)
 	}
 }
