@@ -11,16 +11,17 @@ import (
 const MaxFragmentsInBuffer = 5
 
 var (
-	ErrStreamExists     = errors.New("distribution: stream already exists")
-	ErrStreamNotExists  = errors.New("distribution: stream doesn't exists")
-	ErrFragmentNotFound = errors.New("distribution: fragment not found")
+	ErrStreamExists    = errors.New("distribution: stream already exists")
+	ErrStreamNotExists = errors.New("distribution: stream doesn't exists")
+	ErrNotFound        = errors.New("distribution: fragment not found")
+	ErrNoFragments     = errors.New("distribution: no fragments in stream")
+	ErrInvalidSeq      = errors.New("distribution: invalid media sequence")
 )
 
 type fragmentBuffer struct {
 	lock     sync.RWMutex
 	buffer   *list.List
-	lastTag  uint
-	mediaSeq int
+	mediaSeq uint
 }
 
 type Center struct {
@@ -47,10 +48,11 @@ func (c *Center) NewStream(id string) error {
 func (c *Center) DeleteStream(id string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if _, exists := c.streams[id]; !exists {
+	s, exists := c.streams[id]
+	if !exists {
 		return ErrStreamNotExists
 	}
-	// TODO: maybe lock the stream lock.
+	s.lock.Lock()
 	delete(c.streams, id)
 	return nil
 }
@@ -64,18 +66,38 @@ func (c *Center) PushToStream(id string, f *fsd.Fragment) error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
 	if s.buffer.Len()+1 > MaxFragmentsInBuffer {
-		s.buffer.Remove(s.buffer.Front())
-		s.mediaSeq++
+		s.buffer.Remove(s.buffer.Back())
 	}
-	// NOTE: this alters the tag of Fragment f.
-	f.Tag = s.lastTag
-	s.lastTag++
-	s.buffer.PushBack(f)
+	s.buffer.PushFront(f)
+	s.mediaSeq++
 	return nil
 }
 
-func (c *Center) GetFragmentFromStream(id string, tag uint) (*fsd.Fragment, error) {
+func (c *Center) GetMediaSeqFromStream(id string) (uint, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	s, exists := c.streams[id]
+	if !exists {
+		return 0, ErrStreamNotExists
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	mediaSeq := s.mediaSeq
+	if mediaSeq < 1 {
+		return 0, ErrNoFragments
+	}
+
+	return mediaSeq, nil
+}
+
+func (c *Center) GetFragmentFromStream(id string, mediaSeq uint) (*fsd.Fragment, error) {
+	if mediaSeq < 1 {
+		return nil, ErrInvalidSeq
+	}
+
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	s, exists := c.streams[id]
@@ -85,41 +107,17 @@ func (c *Center) GetFragmentFromStream(id string, tag uint) (*fsd.Fragment, erro
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	for e := s.buffer.Front(); e != nil; e = e.Next() {
-		frag, _ := e.Value.(*fsd.Fragment)
-		if frag.Tag == tag {
-			return frag, nil
+	i := s.mediaSeq
+	e := s.buffer.Front()
+	for {
+		if i == 0 || e == nil {
+			break
+		} else if i == mediaSeq {
+			return e.Value.(*fsd.Fragment), nil
 		}
+		i--
+		e = e.Next()
 	}
 
-	return nil, ErrFragmentNotFound
-}
-
-func (c *Center) GetFragmentsFromStream(id string, max int) ([]*fsd.Fragment, int, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	s, exists := c.streams[id]
-	if !exists {
-		return nil, 0, ErrStreamNotExists
-	}
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	bufLen := s.buffer.Len()
-	if max >= 0 && bufLen > max {
-		bufLen = max
-	}
-	buf := make([]*fsd.Fragment, bufLen)
-
-	e := s.buffer.Back()
-	for i := 1; i < bufLen; i++ {
-		e = e.Prev()
-	}
-	var i int
-	for ; e != nil; e = e.Next() {
-		frag, _ := e.Value.(*fsd.Fragment)
-		buf[i] = frag
-		i++
-	}
-
-	return buf, s.mediaSeq, nil
+	return nil, ErrNotFound
 }

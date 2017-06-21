@@ -4,14 +4,13 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/thesquare-avans/StreamService/distribution"
 	"github.com/thesquare-avans/StreamService/fsd"
-	"github.com/thesquare-avans/StreamService/hls"
 	"github.com/thesquare-avans/StreamService/stream"
 )
 
 func main() {
 	ch := make(chan *fsd.Fragment, 16)
+
 	server, err := stream.NewServer("", 1234, ch)
 	log.Println("Listening")
 	checkErr(err)
@@ -25,21 +24,19 @@ func main() {
 		checkErr(err)
 	}()
 
-	center := distribution.NewCenter()
-	checkErr(center.NewStream("0"))
+	streamServer := stream.NewStreamServer()
 
 	go func() {
-		handler := hls.NewHandler(center, "", 5)
 		log.Println("Listening HTTP")
-		checkErr(http.ListenAndServe(":8080", handler))
+		checkErr(http.ListenAndServe(":8080", streamServer))
 	}()
 
 	for {
 		fragment := <-ch
-		duration, err := fragment.GetVideoLength()
+		duration, err := fragment.GetDuration()
 		checkErr(err)
-		log.Printf("Received fragment, duration: %.3fms, length: %d\n", duration, fragment.Length)
-		center.PushToStream("0", fragment)
+		log.Printf("Received fragment, duration: %s, length: %d\n", duration, fragment.Length)
+		streamServer.PushFragment(fragment)
 	}
 }
 
